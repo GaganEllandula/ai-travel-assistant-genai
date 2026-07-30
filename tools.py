@@ -1,106 +1,142 @@
 import os
 import requests
+import sqlite3
+from typing import List
+from pydantic import BaseModel, Field
 from tavily import TavilyClient
-from langchain_community.embeddings import FastEmbedEmbeddings
-from langchain_community.vectorstores import InMemoryVectorStore
-from langchain_core.documents import Document
+
+from langchain_groq import ChatGroq
 from langchain_core.tools import Tool
 
+DB_FILE = "travel_memory.db"
 
-# 1. RAG Vector Store (Packing & Baggage Rules)
+class UserMemoryExtraction(BaseModel):
+    visited_places: List[str] = Field(default=[], description="Cities/countries the user has explicitly visited")
+    health_conditions: List[str] = Field(default=[], description="Medical conditions, allergies, or health restrictions")
+    dietary_preferences: List[str] = Field(default=[], description="Dietary restrictions or preferences e.g. Vegan, Vegetarian")
 
-docs = [
-    Document(
-        page_content="""
-        PACKING & HEALTH ADVICE:
-        - Carry-on baggage: Liquids under 100ml. Batteries, laptops, power banks in carry-on bags.
-        - Hot Weather: Breathable light cotton clothes, SPF 50 sunscreen, hydration electrolytes, sunglasses.
-        - Cold Weather: Layered thermal innerwear, fleece jackets, wool socks.
-        - Monsoon/Rain: Quick-dry apparel, rain jackets, waterproof footwear.
-        - Health Precautions: Carry required prescription medicines, basic first-aid, and anti-allergy pills.
-        """
-    )
-]
+def get_profile_fact(category: str) -> str:
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM user_profile WHERE category = ?", (category,))
+        row = cursor.fetchone()
+        return row[0] if row else ""
 
-embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-vectorstore = InMemoryVectorStore.from_documents(docs, embeddings)
-
-def get_packing_rules(query: str) -> str:
-    results = vectorstore.similarity_search(query, k=1)
-    return results[0].page_content if results else "Pack light cotton clothing and general medication."
-
-# 2. Weather Tool (OpenWeather API)
-def get_weather(city: str) -> str:
-    api_key = os.getenv("OPENWEATHER_API_KEY")
+def save_profile_fact(category: str, new_value: str):
+    existing = get_profile_fact(category)
+    items = set([x.strip() for x in existing.split(",") if x.strip()])
+    items.add(new_value)
+    updated_str = ", ".join(items)
     
-    # Clean and alias city names (OpenWeather expects 'Kochi' instead of 'Kochin')
-    clean_city = city.strip().replace("Kochin", "Kochi")
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={clean_city}&appid={api_key}&units=metric"
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO user_profile (category, value) VALUES (?, ?)", (category, updated_str))
+
+def extract_and_store_user_memory(user_text: str) -> str:
+    extractor_llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.0)
+    structured_extractor = extractor_llm.with_structured_output(UserMemoryExtraction)
     
     try:
-        res = requests.get(url, timeout=5).json()
+        data: UserMemoryExtraction = structured_extractor.invoke(
+            f"Extract personal facts from this message if present: '{user_text}'"
+        )
+        for place in data.visited_places:
+            save_profile_fact("visited", place.title())
+        for health in data.health_conditions:
+            save_profile_fact("health", health.title())
+        for diet in data.dietary_preferences:
+            save_profile_fact("diet", diet.title())
+            
+        return "User memory profile successfully synchronized with database."
+    except Exception as e:
+        return f"Memory extraction error: {str(e)}"
+
+def get_weather(city: str) -> str:
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+    if not api_key:
+        return "Error: OPENWEATHER_API_KEY environment variable is missing."
+        
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city.strip()}&appid={api_key}&units=metric"
+    
+    try:
+        res = requests.get(url, timeout=8).json()
         if res.get("cod") == 200:
             temp = res["main"]["temp"]
             desc = res["weather"][0]["description"]
             humidity = res["main"]["humidity"]
-            return f"LIVE REAL-TIME WEATHER IN {city.upper()}: {temp}°C, {desc}, Humidity: {humidity}%."
-        else:
-            print(f"[DEBUG] Weather API Error: {res}")
-            return f"Error fetching live weather for {city}: {res.get('message', 'City not found')}"
+            return f"Weather in {city.strip().title()}: {temp}°C, {desc}, Humidity: {humidity}%."
+        return f"Could not retrieve weather for '{city}'. Reason: {res.get('message', 'City not found')}."
     except Exception as e:
-        print(f"[DEBUG] Weather Exception: {str(e)}")
-        return f"Could not fetch weather due to network issue: {str(e)}"
+        return f"Weather service network exception: {str(e)}"
 
-# 3. Web Search Tool for Places & Food (Tavily API)
-
-def get_places_and_food(city: str) -> str:
+def get_places_and_food(destination: str) -> str:
     api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        return "Error: TAVILY_API_KEY environment variable is missing."
     try:
         client = TavilyClient(api_key=api_key)
-        res = client.search(query=f"top must-visit places and iconic local food in {city}", max_results=3)
+        res = client.search(query=f"top must-visit tourist attractions and famous local food in {destination}", max_results=4)
         results = res.get("results", [])
         if results:
             return "\n\n".join([f"- {item['title']}: {item['content']}" for item in results])
-        return f"No live Tavily results found for {city}."
+        return f"No search results returned for {destination}."
     except Exception as e:
-        print(f"[DEBUG] Tavily Places Exception: {str(e)}")
-        return f"Search error for {city}: {str(e)}"
-
-# 4. Web Search Tool for Transit & Routes (Tavily API)
+        return f"Search service exception: {str(e)}"
 
 def get_transit(route: str) -> str:
     api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        return "Error: TAVILY_API_KEY environment variable is missing."
     try:
         client = TavilyClient(api_key=api_key)
-        res = client.search(query=f"flights trains buses travel options for {route}", max_results=3)
+        res = client.search(query=f"travel options flights trains buses routes for {route}", max_results=4)
         results = res.get("results", [])
         if results:
             return "\n\n".join([f"- {item['title']}: {item['content']}" for item in results])
-        return f"No live transit search results found for {route}."
+        return f"No transit details found for {route}."
     except Exception as e:
-        print(f"[DEBUG] Tavily Transit Exception: {str(e)}")
-        return f"Transit search error: {str(e)}"
+        return f"Transit service exception: {str(e)}"
 
-# Export LangChain tools
+def generate_packing_tips(destination_and_weather_info: str) -> str:
+    llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.2)
+    health_notes = get_profile_fact("health") or "None"
+    
+    prompt = f"""
+    Destination & Weather Context: '{destination_and_weather_info}'
+    User Health Profile: '{health_notes}'
+    
+    Task: Generate EXACTLY 5 practical, dynamic luggage packing tips tailored specifically to the climate and health facts above.
+    Do NOT output generic templates.
+    """
+    try:
+        return llm.invoke(prompt).content
+    except Exception as e:
+        return f"Packing tip generation error: {str(e)}"
+
 all_tools = [
     Tool(
         name="get_weather", 
         func=get_weather, 
-        description="MUST BE USED to fetch live real-time weather, temperature, and forecast for any destination city."
+        description="Retrieves real-time weather from OpenWeather. Parameter must be a valid specific city name (e.g. 'Srinagar', 'Kochi', 'Hyderabad', 'Paris')."
     ),
     Tool(
         name="get_places_and_food", 
         func=get_places_and_food, 
-        description="MUST BE USED to find top tourist places, attractions, and local food dishes for any city."
+        description="Searches real-time web data for top tourist attractions and local food specialties for a destination."
     ),
     Tool(
         name="get_transit", 
         func=get_transit, 
-        description="MUST BE USED to find flight, train, or bus options between origin and destination cities."
+        description="Searches travel options (flights, trains, buses) between origin and destination routes."
     ),
     Tool(
-        name="get_packing_rules", 
-        func=get_packing_rules, 
-        description="MUST BE USED to retrieve baggage rules, health tips, and clothing guidelines."
+        name="get_packing_recommendations", 
+        func=generate_packing_tips, 
+        description="Generates 5 dynamic packing recommendations based on weather and user health notes."
+    ),
+    Tool(
+        name="extract_user_memory", 
+        func=extract_and_store_user_memory, 
+        description="Extracts user personal facts (visited places, health conditions, dietary habits) and persists them in SQLite."
     )
 ]
