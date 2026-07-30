@@ -4,9 +4,8 @@ import uuid
 import streamlit as st
 from dotenv import load_dotenv
 
-# ----------------------------------------------------
-# 🔑 Load Environment Variables from .env File
-# ----------------------------------------------------
+#  Load Environment Variables from .env File
+
 load_dotenv()
 
 from langchain_groq import ChatGroq
@@ -15,9 +14,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from tools import all_tools
 
-# ----------------------------------------------------
-# 🗄️ 1. SQLite Database Initialization
-# ----------------------------------------------------
+# 1. SQLite Database Initialization
 DB_FILE = "travel_memory.db"
 
 def init_db():
@@ -85,10 +82,7 @@ def get_all_threads():
     conn.close()
     return [r[0] for r in rows]
 
-# ----------------------------------------------------
-# 🤖 2. LangGraph Agent Setup
-# ----------------------------------------------------
-# ChatGroq will automatically pick up GROQ_API_KEY from environment variables loaded by dotenv
+# 2. LangGraph Agent Setup
 llm = ChatGroq(
     model_name="llama-3.3-70b-versatile", 
     temperature=0.1,
@@ -118,9 +112,7 @@ TOOL INVOCATION MANDATE:
 Always deliver up-to-date factual data provided by your tools.
 """
 
-# ----------------------------------------------------
-# 🎨 3. Streamlit UI
-# ----------------------------------------------------
+# 3. Streamlit UI
 st.set_page_config(page_title="AI Travel Assistant", page_icon="✈️", layout="wide")
 st.title("✈️ AI Travel Assistant")
 
