@@ -11,9 +11,10 @@ from langchain_core.tools import Tool
 DB_FILE = "travel_memory.db"
 
 class UserMemoryExtraction(BaseModel):
-    visited_places: List[str] = Field(default=[], description="Cities/countries the user has explicitly visited")
-    health_conditions: List[str] = Field(default=[], description="Medical conditions, allergies, or health restrictions")
-    dietary_preferences: List[str] = Field(default=[], description="Dietary restrictions or preferences e.g. Vegan, Vegetarian")
+    visited_places: List[str] = Field(default=[], description="Cities or countries the user has explicitly visited")
+    health_conditions: List[str] = Field(default=[], description="Medical conditions, allergies, or physical restrictions")
+    dietary_preferences: List[str] = Field(default=[], description="Dietary preferences or restrictions e.g. Vegan, Halal, Vegetarian")
+    general_preferences: List[str] = Field(default=[], description="Any other personal preferences, budget habits, travel styles, or personal notes")
 
 def get_profile_fact(category: str) -> str:
     with sqlite3.connect(DB_FILE) as conn:
@@ -46,6 +47,8 @@ def extract_and_store_user_memory(user_text: str) -> str:
             save_profile_fact("health", health.title())
         for diet in data.dietary_preferences:
             save_profile_fact("diet", diet.title())
+        for pref in data.general_preferences:
+            save_profile_fact("preferences", pref.strip())
             
         return "User memory profile successfully synchronized with database."
     except Exception as e:
@@ -100,12 +103,14 @@ def get_transit(route: str) -> str:
 def generate_packing_tips(destination_and_weather_info: str) -> str:
     llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.2)
     health_notes = get_profile_fact("health") or "None"
+    pref_notes = get_profile_fact("preferences") or "None"
     
     prompt = f"""
     Destination & Weather Context: '{destination_and_weather_info}'
     User Health Profile: '{health_notes}'
+    User General Preferences: '{pref_notes}'
     
-    Task: Generate EXACTLY 5 practical, dynamic luggage packing tips tailored specifically to the climate and health facts above.
+    Task: Generate EXACTLY 5 practical, dynamic luggage packing tips tailored specifically to the climate and user profile facts above.
     Do NOT output generic templates.
     """
     try:
@@ -132,11 +137,11 @@ all_tools = [
     Tool(
         name="get_packing_recommendations", 
         func=generate_packing_tips, 
-        description="Generates 5 dynamic packing recommendations based on weather and user health notes."
+        description="Generates 5 dynamic packing recommendations based on weather and user health/preference notes."
     ),
     Tool(
         name="extract_user_memory", 
         func=extract_and_store_user_memory, 
-        description="Extracts user personal facts (visited places, health conditions, dietary habits) and persists them in SQLite."
+        description="Extracts user personal facts (visited places, health conditions, dietary habits, travel preferences) and persists them in SQLite."
     )
 ]
