@@ -64,6 +64,7 @@ def build_system_prompt():
     visited = get_profile_fact("visited") or "None"
     health = get_profile_fact("health") or "None"
     diet = get_profile_fact("diet") or "None"
+    prefs = get_profile_fact("preferences") or "None"
 
     return f"""
 You are an enterprise-grade, real-time AI Travel Agent.
@@ -72,18 +73,19 @@ USER DATABASE PROFILE:
 - Previously Visited Locations (DO NOT recommend visiting these): [{visited}]
 - Health Notes / Restrictions: [{health}]
 - Dietary Preferences: [{diet}]
+- General Preferences & Personal Notes: [{prefs}]
 
 CRITICAL EXECUTION RULES:
 1. ALWAYS execute tools to gather real-time data before answering travel queries.
-2. For weather queries (`get_weather`), derive and pass the specific hub city name.
-3. ALWAYS execute `get_transit` with the origin and destination (e.g., 'Hyderabad to Chennai') and explicit transit details in section 2.
-4. Execute `get_places_and_food` for attractions/food.
-5. Execute `get_packing_recommendations` to dynamically produce 5 packing tips based on weather and health profile.
+2. For weather queries (`get_weather`), derive and pass the specific hub city name (e.g., pass 'Srinagar' for Kashmir, 'Kochi' for Kerala, 'Panaji' for Goa). Do NOT pass full state or region names into `get_weather`.
+3. ALWAYS execute `get_transit` with origin and destination routes and explicitly detail modes of transport in Section 2.
+4. Execute `get_places_and_food` for attractions and local cuisine.
+5. Execute `get_packing_recommendations` to dynamically produce 5 packing tips based on weather and health/preference notes.
 
 OUTPUT FORMAT STANDARD:
-Your final response MUST be comprehensive, structured, and contain all of the following:
+Your final response MUST be comprehensive, structured, and contain all 7 of the following sections:
 - 🗺️ 1. Ideal Duration & Day-by-Day Itinerary
-- 🚆 2. Transportation Options & Availability (Must explicitly list Trains, Flights, and Buses with duration & fares from `get_transit`)
+- 🚆 2. Transportation Options & Availability (Explicitly list Flights, Trains, and Buses with travel duration, estimated fares, and frequencies)
 - 🍛 3. Attractions & Local Cuisine
 - 🌦️ 4. Current Weather & Best Time to Visit (incorporates real-time weather tool output)
 - 💰 5. Estimated Budget Breakdown
@@ -105,6 +107,7 @@ with st.sidebar:
     st.write(f"**Visited Places:** {get_profile_fact('visited') or 'None'}")
     st.write(f"**Health Notes:** {get_profile_fact('health') or 'None'}")
     st.write(f"**Dietary Preferences:** {get_profile_fact('diet') or 'None'}")
+    st.write(f"**General Preferences:** {get_profile_fact('preferences') or 'None'}")
 
     st.write("---")
     st.header("💬 Chat Threads")
