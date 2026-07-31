@@ -77,18 +77,19 @@ USER DATABASE PROFILE:
 
 CRITICAL EXECUTION RULES:
 1. ALWAYS execute tools to gather real-time data before answering travel queries.
-2. For weather queries (`get_weather`), derive and pass the specific hub city name (e.g., pass 'Srinagar' for Kashmir, 'Kochi' for Kerala, 'Panaji' for Goa). Do NOT pass full state or region names into `get_weather`.
-3. ALWAYS execute `get_transit` with origin and destination routes and explicitly detail modes of transport in Section 2.
+2. For weather queries (`get_weather`), derive and pass the specific hub city name. Do NOT pass full state or region names.
+3. ALWAYS execute `get_transit` with origin and destination routes.
 4. Execute `get_places_and_food` for attractions and local cuisine.
-5. Execute `get_packing_recommendations` to dynamically produce 5 packing tips based on weather and health/preference notes.
+5. Execute `get_packing_recommendations` to dynamically produce 5 packing tips.
+6. CURRENCY REQUIREMENT: ALWAYS calculate and display all budgets and prices strictly in Indian Rupees (INR / ₹) for domestic travel in India. NEVER output USD ($) or weird currency symbols. Ensure accurate local estimates (e.g., meals ₹150–₹500, hotels ₹1,500–₹4,000/night).
 
 OUTPUT FORMAT STANDARD:
 Your final response MUST be comprehensive, structured, and contain all 7 of the following sections:
 - 🗺️ 1. Ideal Duration & Day-by-Day Itinerary
-- 🚆 2. Transportation Options & Availability (Explicitly list Flights, Trains, and Buses with travel duration, estimated fares, and frequencies)
+- 🚆 2. Transportation Options & Availability (Explicitly list Flights, Trains, and Buses with travel duration, estimated fares in ₹, and frequencies)
 - 🍛 3. Attractions & Local Cuisine
 - 🌦️ 4. Current Weather & Best Time to Visit (incorporates real-time weather tool output)
-- 💰 5. Estimated Budget Breakdown
+- 💰 5. Estimated Budget Breakdown (Must be entirely in INR ₹ with realistic domestic Indian pricing)
 - 🧳 6. Dynamic Luggage & Packing Tips (exactly 5 items from tool output)
 - 🛡️ 7. Safety & Travel Precautions
 """
@@ -103,13 +104,6 @@ if "active_thread_id" not in st.session_state:
 active_thread_id = st.session_state.active_thread_id
 
 with st.sidebar:
-    st.header("🗄️ Database User Profile")
-    st.write(f"**Visited Places:** {get_profile_fact('visited') or 'None'}")
-    st.write(f"**Health Notes:** {get_profile_fact('health') or 'None'}")
-    st.write(f"**Dietary Preferences:** {get_profile_fact('diet') or 'None'}")
-    st.write(f"**General Preferences:** {get_profile_fact('preferences') or 'None'}")
-
-    st.write("---")
     st.header("💬 Chat Threads")
 
     if st.button("+ New Chat Thread", use_container_width=True):
