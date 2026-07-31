@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from tavily import TavilyClient
 
 from langchain_groq import ChatGroq
-from langchain_core.tools import Tool
+from langchain_core.tools import tool
 
 DB_FILE = "travel_memory.db"
 
@@ -54,7 +54,9 @@ def extract_and_store_user_memory(user_text: str) -> str:
     except Exception as e:
         return f"Memory extraction error: {str(e)}"
 
+@tool
 def get_weather(city: str) -> str:
+    """Retrieves real-time weather from OpenWeather for a specific hub city name (e.g. 'Srinagar', 'Kochi', 'Hyderabad', 'Chennai')."""
     api_key = os.getenv("OPENWEATHER_API_KEY")
     if not api_key:
         return "Error: OPENWEATHER_API_KEY environment variable is missing."
@@ -72,7 +74,9 @@ def get_weather(city: str) -> str:
     except Exception as e:
         return f"Weather service network exception: {str(e)}"
 
+@tool
 def get_places_and_food(destination: str) -> str:
+    """Searches real-time web data for top tourist attractions and famous local food specialties for a destination."""
     api_key = os.getenv("TAVILY_API_KEY")
     if not api_key:
         return "Error: TAVILY_API_KEY environment variable is missing."
@@ -86,7 +90,9 @@ def get_places_and_food(destination: str) -> str:
     except Exception as e:
         return f"Search service exception: {str(e)}"
 
+@tool
 def get_transit(route: str) -> str:
+    """Searches travel options (flights, trains, buses) between origin and destination routes. Pass a route string like 'Hyderabad to Chennai'."""
     api_key = os.getenv("TAVILY_API_KEY")
     if not api_key:
         return "Error: TAVILY_API_KEY environment variable is missing."
@@ -100,7 +106,9 @@ def get_transit(route: str) -> str:
     except Exception as e:
         return f"Transit service exception: {str(e)}"
 
+@tool
 def generate_packing_tips(destination_and_weather_info: str) -> str:
+    """Generates 5 dynamic packing recommendations based on climate and user health/preference notes."""
     llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.2)
     health_notes = get_profile_fact("health") or "None"
     pref_notes = get_profile_fact("preferences") or "None"
@@ -119,29 +127,8 @@ def generate_packing_tips(destination_and_weather_info: str) -> str:
         return f"Packing tip generation error: {str(e)}"
 
 all_tools = [
-    Tool(
-        name="get_weather", 
-        func=get_weather, 
-        description="Retrieves real-time weather from OpenWeather. Parameter must be a valid specific city name (e.g. 'Srinagar', 'Kochi', 'Hyderabad', 'Paris')."
-    ),
-    Tool(
-        name="get_places_and_food", 
-        func=get_places_and_food, 
-        description="Searches real-time web data for top tourist attractions and local food specialties for a destination."
-    ),
-    Tool(
-        name="get_transit", 
-        func=get_transit, 
-        description="Searches travel options (flights, trains, buses) between origin and destination routes."
-    ),
-    Tool(
-        name="get_packing_recommendations", 
-        func=generate_packing_tips, 
-        description="Generates 5 dynamic packing recommendations based on weather and user health/preference notes."
-    ),
-    Tool(
-        name="extract_user_memory", 
-        func=extract_and_store_user_memory, 
-        description="Extracts user personal facts (visited places, health conditions, dietary habits, travel preferences) and persists them in SQLite."
-    )
+    get_weather,
+    get_places_and_food,
+    get_transit,
+    generate_packing_tips
 ]
